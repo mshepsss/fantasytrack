@@ -23,17 +23,17 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
     "@libsql/client": "^0.17.0",
-    "dotenv": "^17.3.1",
     "next": "^15.5.12",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "recharts": "^3.7.0",
-    "typescript": "^5.9.3"
+    "recharts": "^3.7.0"
   },
   "devDependencies": {
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "dotenv": "^17.3.1",
     "eslint": "^9.39.3",
-    "eslint-config-next": "^16.1.6"
+    "eslint-config-next": "^16.1.6",
+    "typescript": "^5.9.3"
   }
 }
