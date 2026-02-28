@@ -33,29 +33,54 @@ export async function GET(req: NextRequest) {
   const prevWeek   = week > 1 ? week - 1 : null
   const prevSeason = week > 1 ? season : season - 1
 
-  let sql = `
-    SELECT
-      p.player_id,
-      p.name,
-      p.position,
-      p.team,
-      s.rank,
-      s.projected_pts,
-      s.week,
-      s.season,
-      prev.rank AS prev_rank
-    FROM players p
-    JOIN snapshots s
-      ON s.player_id = p.player_id
-     AND s.season = ?
-     AND s.week = ?
-    LEFT JOIN snapshots prev
-      ON prev.player_id = p.player_id
-     AND prev.season = ?
-     AND prev.week = ?
-    WHERE 1=1
-  `
-  const args: (string | number)[] = [season, week, prevSeason, prevWeek ?? 0]
+  let sql: string
+  let args: (string | number)[]
+
+  if (prevWeek !== null) {
+    sql = `
+      SELECT
+        p.player_id,
+        p.name,
+        p.position,
+        p.team,
+        s.rank,
+        s.projected_pts,
+        s.week,
+        s.season,
+        prev.rank AS prev_rank
+      FROM players p
+      JOIN snapshots s
+        ON s.player_id = p.player_id
+       AND s.season = ?
+       AND s.week = ?
+      LEFT JOIN snapshots prev
+        ON prev.player_id = p.player_id
+       AND prev.season = ?
+       AND prev.week = ?
+      WHERE 1=1
+    `
+    args = [season, week, prevSeason, prevWeek]
+  } else {
+    sql = `
+      SELECT
+        p.player_id,
+        p.name,
+        p.position,
+        p.team,
+        s.rank,
+        s.projected_pts,
+        s.week,
+        s.season,
+        NULL AS prev_rank
+      FROM players p
+      JOIN snapshots s
+        ON s.player_id = p.player_id
+       AND s.season = ?
+       AND s.week = ?
+      WHERE 1=1
+    `
+    args = [season, week]
+  }
 
   if (position && position !== 'ALL') {
     sql += ` AND p.position = ?`
