@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "db:init": "node --import tsx/esm src/scripts/init-db.ts"
+    "db:init": "npx tsx src/scripts/init-db.ts"
   },
   "repository": {
     "type": "git",

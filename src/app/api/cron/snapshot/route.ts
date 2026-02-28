@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
+
 import { db } from '@/lib/db'
 import {
   fetchAllPlayers,
@@ -42,7 +44,6 @@ export async function POST(req: NextRequest) {
     }
 
     if (hasProjections) {
-      // Rank by projected pts
       const tempByPos: Record<Position, Array<{ id: string; pts: number }>> = {
         QB: [], RB: [], WR: [], TE: [], K: [],
       }
@@ -62,7 +63,6 @@ export async function POST(req: NextRequest) {
         })
       }
     } else if (stats) {
-      // Use pre-computed position ranks from actual stats
       for (const [playerId, stat] of Object.entries(stats)) {
         if (!stat.pos_rank_ppr) continue
         const player = allPlayers[playerId]
@@ -73,8 +73,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    let upsertedPlayers = 0
-    let insertedSnapshots = 0
+    // Collect all rows to batch insert
+    const playerStatements = []
+    const snapshotStatements = []
 
     for (const pos of TRACKED_POSITIONS) {
       for (const { id, pts, rank } of byPosition[pos]) {
@@ -83,35 +84,35 @@ export async function POST(req: NextRequest) {
           ?? `${player.first_name ?? ''} ${player.last_name ?? ''}`.trim()
           ?? id
 
-        // Upsert player
-        await db.execute({
+        playerStatements.push({
           sql: `INSERT INTO players (player_id, name, position, team)
                 VALUES (?, ?, ?, ?)
                 ON CONFLICT(player_id) DO UPDATE SET
                   name     = excluded.name,
                   position = excluded.position,
                   team     = excluded.team`,
-          args: [id, name, pos, player.team ?? null],
+          args: [id, name, pos, player.team ?? null] as (string | null)[],
         })
-        upsertedPlayers++
 
-        // Insert snapshot (ignore duplicate week/season)
-        await db.execute({
+        snapshotStatements.push({
           sql: `INSERT INTO snapshots (player_id, week, season, rank, projected_pts)
                 VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT(player_id, week, season) DO NOTHING`,
-          args: [id, targetWeek, targetSeason, rank, pts],
+          args: [id, targetWeek, targetSeason, rank, pts] as (string | number | null)[],
         })
-        insertedSnapshots++
       }
     }
+
+    // Execute all inserts in two batches (players first, then snapshots for FK integrity)
+    await db.batch(playerStatements)
+    await db.batch(snapshotStatements)
 
     return NextResponse.json({
       ok: true,
       season: targetSeason,
       week: targetWeek,
-      upsertedPlayers,
-      insertedSnapshots,
+      upsertedPlayers: playerStatements.length,
+      insertedSnapshots: snapshotStatements.length,
     })
   } catch (err) {
     console.error('Snapshot failed:', err)
