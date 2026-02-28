@@ -5,6 +5,7 @@ import { db } from '@/lib/db'
 import {
   fetchAllPlayers,
   fetchProjections,
+  fetchStats,
   getCurrentNFLWeek,
   TRACKED_POSITIONS,
   type Position,
@@ -29,35 +30,54 @@ export async function POST(req: NextRequest) {
       fetchProjections(targetSeason, targetWeek),
     ])
 
-    // Group players with projections by position
-    const byPosition: Record<Position, Array<{ id: string; pts: number }>> = {
+    // Check if projections have actual data
+    const hasProjections = Object.values(projections).some(p => (p.pts_ppr ?? 0) > 0)
+
+    // Fall back to stats (actual points scored) when projections are unavailable
+    const stats = hasProjections ? null : await fetchStats(targetSeason, targetWeek)
+
+    // Group players by position with rank info
+    const byPosition: Record<Position, Array<{ id: string; pts: number | null; rank: number }>> = {
       QB: [], RB: [], WR: [], TE: [], K: [],
     }
 
-    for (const [playerId, proj] of Object.entries(projections)) {
-      const player = allPlayers[playerId]
-      if (!player) continue
-
-      const pos = (player.fantasy_positions?.[0] ?? player.position) as Position
-      if (!TRACKED_POSITIONS.includes(pos)) continue
-      if (!player.active) continue
-
-      const pts = proj.pts_ppr ?? 0
-      if (pts <= 0) continue
-
-      byPosition[pos].push({ id: playerId, pts })
+    if (hasProjections) {
+      // Rank by projected pts
+      const tempByPos: Record<Position, Array<{ id: string; pts: number }>> = {
+        QB: [], RB: [], WR: [], TE: [], K: [],
+      }
+      for (const [playerId, proj] of Object.entries(projections)) {
+        const player = allPlayers[playerId]
+        if (!player) continue
+        const pos = (player.fantasy_positions?.[0] ?? player.position) as Position
+        if (!TRACKED_POSITIONS.includes(pos)) continue
+        if (!player.active) continue
+        const pts = proj.pts_ppr ?? 0
+        if (pts <= 0) continue
+        tempByPos[pos].push({ id: playerId, pts })
+      }
+      for (const pos of TRACKED_POSITIONS) {
+        tempByPos[pos].sort((a, b) => b.pts - a.pts).forEach(({ id, pts }, i) => {
+          byPosition[pos].push({ id, pts, rank: i + 1 })
+        })
+      }
+    } else if (stats) {
+      // Use pre-computed position ranks from actual stats
+      for (const [playerId, stat] of Object.entries(stats)) {
+        if (!stat.pos_rank_ppr) continue
+        const player = allPlayers[playerId]
+        if (!player) continue
+        const pos = (player.fantasy_positions?.[0] ?? player.position) as Position
+        if (!TRACKED_POSITIONS.includes(pos)) continue
+        byPosition[pos].push({ id: playerId, pts: stat.pts_ppr ?? null, rank: stat.pos_rank_ppr })
+      }
     }
 
-    // Sort each position group by pts descending → rank = index + 1
     let upsertedPlayers = 0
     let insertedSnapshots = 0
 
     for (const pos of TRACKED_POSITIONS) {
-      const ranked = byPosition[pos].sort((a, b) => b.pts - a.pts)
-
-      for (let i = 0; i < ranked.length; i++) {
-        const { id, pts } = ranked[i]
-        const rank = i + 1
+      for (const { id, pts, rank } of byPosition[pos]) {
         const player = allPlayers[id]
         const name = player.full_name
           ?? `${player.first_name ?? ''} ${player.last_name ?? ''}`.trim()

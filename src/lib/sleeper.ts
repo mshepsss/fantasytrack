@@ -19,6 +19,11 @@ export interface SleeperProjection {
   pts_std?:      number
 }
 
+export interface SleeperStats {
+  pos_rank_ppr?: number
+  pts_ppr?:      number
+}
+
 export const TRACKED_POSITIONS: Position[] = ['QB', 'RB', 'WR', 'TE', 'K']
 
 export async function fetchAllPlayers(): Promise<Record<string, SleeperPlayer>> {
@@ -36,6 +41,18 @@ export async function fetchProjections(
     { next: { revalidate: 0 } },
   )
   if (!res.ok) throw new Error(`Sleeper projections failed: ${res.status}`)
+  return res.json()
+}
+
+export async function fetchStats(
+  season: number,
+  week: number,
+): Promise<Record<string, SleeperStats>> {
+  const res = await fetch(
+    `${SLEEPER_BASE}/stats/nfl/${season}/${week}?season_type=regular&position[]=QB&position[]=RB&position[]=WR&position[]=TE&position[]=K`,
+    { next: { revalidate: 0 } },
+  )
+  if (!res.ok) throw new Error(`Sleeper stats failed: ${res.status}`)
   return res.json()
 }
 
